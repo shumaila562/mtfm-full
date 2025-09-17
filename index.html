@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Muang Thong Fit Map</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#10b981" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root{
+      --primary:#10b981; --dark:#111827; --muted:#6b7280; --bg:#f8fafc; --card:#ffffff;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif;background:var(--bg);color:#111}
+    header{padding:18px 16px 8px}
+    h1{margin:0;font-size:22px}
+    .sub{color:var(--muted);font-size:13px}
+    .wrap{max-width:840px;margin:0 auto;padding:0 12px 64px}
+    .grid{display:grid;gap:12px}
+    .card{background:var(--card);border:1px solid #e5e7eb;border-radius:12px;padding:14px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    select,input{padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff}
+    select,input{min-width:140px}
+    button{border:0;border-radius:10px;padding:10px 14px;cursor:pointer}
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-ghost{background:#eef2ff;color:#111}
+    .btn-danger{background:#ef4444;color:#fff}
+    .muted{color:var(--muted)}
+    #map{height:320px;border-radius:12px;border:1px solid #e5e7eb}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-top:1px solid #e5e7eb;padding:8px 6px;text-align:left;font-size:14px}
+    th{background:#f3f4f6}
+    .legend{background:#fff;padding:6px 8px;border-radius:8px;border:1px solid #e5e7eb;font-size:12px}
+    .pill{display:inline-block;background:#f3f4f6;border:1px solid #e5e7eb;padding:3px 8px;border-radius:999px;font-size:12px}
+    .hide{display:none}
+    .ok{color:#16a34a}
+    .err{color:#b91c1c}
+    .kicker{font-weight:600;margin-bottom:6px}
+    .reward-btn{margin-right:8px;margin-bottom:8px}
+    /* Onboarding overlay */
+    #onboard{position:fixed;inset:0;background:#00000088;display:none;align-items:center;justify-content:center;padding:16px;z-index:9999}
+    #onboard .panel{width:min(640px,96vw);background:#fff;border-radius:14px;border:1px solid #e5e7eb;padding:16px}
+    #onboard h3{margin:6px 0 2px 0}
+    #onboard label{font-size:13px;color:#374151}
+    #onboard input,#onboard select{width:100%;margin:6px 0 10px 0}
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <h1>Muang Thong Fit Map</h1>
+    <div class="sub">PWA • Local-first • SDG3/11/17</div>
+  </header>
+
+  <!-- Onboarding -->
+  <div id="onboard">
+    <div class="panel">
+      <h2>สร้างโปรไฟล์สุขภาพ</h2>
+      <div class="muted" style="margin-bottom:10px">กรอกสั้น ๆ ครั้งเดียว ระบบจะจำไว้ในเครื่องของคุณ</div>
+      <div id="onboardMsg" class="err" style="min-height:18px"></div>
+      <div class="grid" style="grid-template-columns:1fr 1fr">
+        <div>
+          <label>ชื่อ-นามสกุล</label>
+          <input id="pf_name" placeholder="เช่น สมชาย ใจดี" />
+        </div>
+        <div>
+          <label>เบอร์โทร</label>
+          <input id="pf_phone" placeholder="เช่น 0812345678" />
+        </div>
+        <div>
+          <label>Gmail</label>
+          <input id="pf_email" type="email" placeholder="you@gmail.com" />
+        </div>
+        <div>
+          <label>เป้าหมายสุขภาพ</label>
+          <select id="pf_goal">
+            <option value="">เลือกเป้าหมาย</option>
+            <option value="loss">ลดน้ำหนัก</option>
+            <option value="fit">หุ่นเฟิร์ม</option>
+            <option value="endurance">เพิ่มความอึด</option>
+            <option value="muscle">สร้างกล้าม</option>
+            <option value="health">สุขภาพโดยรวม</option>
+          </select>
+        </div>
+        <div style="grid-column:1/-1">
+          <label>อยากได้หุ่นแบบไหน</label>
+          <input id="pf_body" placeholder="เช่น หุ่นนักวิ่ง / ฟิตเนสลีน" />
+        </div>
+      </div>
+      <div class="row" style="justify-content:flex-end">
+        <button id="btnSkipProfile" class="btn-ghost">ข้าม</button>
+        <button id="btnSaveProfile" class="btn-primary">บันทึกโปรไฟล์</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="wrap grid">
+
+    <!-- โปรไฟล์ & คำแนะนำ -->
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="kicker">โปรไฟล์</div>
+          <div id="profileSummary" class="muted">-</div>
+        </div>
+        <div class="row">
+          <span id="streakPill" class="pill">streak 0 วัน</span>
+          <button id="btnEditProfile" class="btn-ghost">แก้ไขโปรไฟล์</button>
+        </div>
+      </div>
+      <div id="recCard" class="card" style="margin-top:12px">
+        <div class="kicker">คำแนะนำสำหรับวันนี้</div>
+        <div id="recText">เลือกเป้าหมายเพื่อรับคำแนะนำเฉพาะตัว</div>
+      </div>
+    </section>
+
+    <!-- แผนที่ -->
+    <section class="card">
+      <div class="kicker">แผนที่เส้นทาง</div>
+      <div id="map"></div>
+      <div class="muted" style="margin-top:6px">หาก GPS ไม่พร้อม ให้เลือกเส้นทาง preset หรือใส่ระยะเองข้างล่าง</div>
+    </section>
+
+    <!-- กิจกรรม -->
+    <section class="card">
+      <div class="kicker">กิจกรรม</div>
+      <div class="row" style="margin-bottom:8px">
+        <select id="activityType">
+          <option value="walk">🚶 เดิน</option>
+          <option value="run">🏃 วิ่ง</option>
+          <option value="cycle">🚴 ปั่นจักรยาน</option>
+        </select>
+        <select id="routePreset">
+          <option value="">เลือกเส้นทาง (ไม่บังคับ)</option>
+          <option value="lake2_8">Lake Loop 2.8 km</option>
+          <option value="run5_2">Extended Park Run 5.2 km</option>
+          <option value="cycle8_5">City Cycle 8.5 km</option>
+        </select>
+        <button id="btnStart" class="btn-primary">▶ เริ่มกิจกรรม</button>
+        <button id="btnStop" class="btn-danger" disabled>■ หยุดบันทึก</button>
+      </div>
+      <div id="liveStatus" class="muted" style="min-height:20px"></div>
+
+      <details style="margin-top:6px">
+        <summary class="muted">กรณี GPS ใช้ไม่ได้ (ใส่ระยะเอง)</summary>
+        <div class="row" style="margin-top:8px">
+          <input id="manualKm" placeholder="เช่น 2.4 (กม.)" />
+          <button id="btnManualSave" class="btn-ghost">บันทึก</button>
+          <button id="btnQuick1" class="btn-ghost">+1 กม.</button>
+        </div>
+      </details>
+    </section>
+
+    <!-- แต้ม & แลกสิทธิ์ -->
+    <section class="card">
+      <div class="kicker">คะแนน & แลกสิทธิ์</div>
+      <div style="margin-bottom:8px">
+        <b>คะแนนปัจจุบัน:</b> <span id="points">0 pts</span>
+        <div class="muted">กติกา: 1 แต้ม / 400 เมตร, เพดาน/วัน 100 แต้ม, สตรีค x1.2 (≥3วัน) / x1.5 (≥7วัน)</div>
+      </div>
+      <div style="margin-bottom:8px">
+        <button class="reward-btn btn-ghost" onclick="redeemReward('Healthy Bowl 10%','HB',120)">🥗 Healthy Bowl 10% (120)</button>
+        <button class="reward-btn btn-ghost" onclick="redeemReward('น้ำเติมฟรี 1 ครั้ง','WTR',60)">💧 น้ำเติมฟรี (60)</button>
+      </div>
+      <div id="redeemMsg" class="ok"></div>
+      <table style="margin-top:8px">
+        <thead><tr><th>เวลา</th><th>รางวัล</th><th>โค้ด</th></tr></thead>
+        <tbody id="redeemTable"></tbody>
+      </table>
+    </section>
+
+    <!-- ประวัติ & ชาเลนจ์ -->
+    <section class="card">
+      <div class="kicker">ประวัติกิจกรรม</div>
+      <table>
+        <thead><tr><th>เวลา</th><th>ประเภท</th><th>กม.</th><th>แต้ม</th></tr></thead>
+        <tbody id="historyTable"></tbody>
+      </table>
+      <div class="row" style="margin-top:10px;justify-content:space-between">
+        <div class="muted">ชาเลนจ์:</div>
+        <div class="row">
+          <button class="btn-ghost" onclick="joinChallenge()">Join 5k-a-day</button>
+          <span id="challengeState" class="pill">ยังไม่เข้าร่วม</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // ===== Local DB helpers =====
+    const DB = {
+      load(key, def){ try{ return JSON.parse(localStorage.getItem(key) || JSON.stringify(def)); } catch(e){ return def; } },
+      save(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+    };
+
+    // ===== Profile (Onboarding) =====
+    function loadProfile(){ return DB.load('mtfm_profile', null); }
+    function saveProfile(p){ DB.save('mtfm_profile', p); }
+    function showOnboard(show){ const el = document.getElementById('onboard'); if (el) el.style.display = show ? 'flex' : 'none'; }
+
+    function recommendText(goal){
+      switch(goal){
+        case 'loss': return 'แนะนำเดิน/วิ่ง 2.8 กม. (Lake Loop) วันเว้นวัน + คุมแคลอรี่ + ดื่มน้ำ 2 ลิตร';
+        case 'fit': return 'แนะนำวิ่ง 5.2 กม. แบบจ๊อกช้า + เวท 2 วัน/สัปดาห์ เพื่อกระชับสัดส่วน';
+        case 'endurance': return 'แนะนำปั่น 8.5 กม. รักษา HR โซน 2–3 สัปดาห์ละ 3 วัน';
+        case 'muscle': return 'แนะนำเดินเร็ว 2 กม. วอร์ม + เวท 3 วัน/สัปดาห์ โปรตีน 1.6–2.2 g/kg';
+        case 'health': return 'แนะนำ 5–8k ก้าว/วัน + ผักผลไม้ 400 กรัม/วัน + นอน 7–8 ชม.';
+        default: return 'เลือกเป้าหมายเพื่อรับคำแนะนำเฉพาะตัว';
+      }
+    }
+
+    function renderProfile(){
+      const p = loadProfile() || {};
+      const sum = `${p.name || '—'} • ${p.phone || ''} • ${p.email || ''} • goal: ${p.goal || '—'} • body: ${p.body || '—'}`;
+      document.getElementById('profileSummary').textContent = sum;
+      document.getElementById('recText').textContent = recommendText(p.goal);
+    }
+
+    function initOnboarding(){
+      const p = loadProfile();
+      showOnboard(!p);
+      const btnSave = document.getElementById('btnSaveProfile');
+      const btnSkip = document.getElementById('btnSkipProfile');
+      const btnEdit = document.getElementById('btnEditProfile');
+
+      btnSave.addEventListener('click', ()=>{
+        const name = document.getElementById('pf_name').value.trim();
+        const phone = document.getElementById('pf_phone').value.trim();
+        const email = document.getElementById('pf_email').value.trim();
+        const goal = document.getElementById('pf_goal').value;
+        const body = document.getElementById('pf_body').value.trim();
+        if(!name || !email){ document.getElementById('onboardMsg').textContent='กรอก ชื่อ และ Gmail อย่างน้อย'; return; }
+        saveProfile({name, phone, email, goal, body, ts: Date.now()});
+        showOnboard(false); renderProfile();
+      });
+      btnSkip.addEventListener('click', ()=> showOnboard(false));
+      btnEdit.addEventListener('click', ()=>{
+        const p = loadProfile() || {};
+        document.getElementById('pf_name').value = p.name || '';
+        document.getElementById('pf_phone').value = p.phone || '';
+        document.getElementById('pf_email').value = p.email || '';
+        document.getElementById('pf_goal').value = p.goal || '';
+        document.getElementById('pf_body').value = p.body || '';
+        showOnboard(true);
+      });
+    }
+
+    // ===== State =====
+    let state = {
+      active: null,
+      activities: DB.load('mtfm_activities', []),
+      points: DB.load('mtfm_points', 0),
+      redemptions: DB.load('mtfm_redemptions', []),
+      challenge: DB.load('mtfm_challenge', null)
+    };
+
+    // ===== Config =====
+    const POINT_PER_M = 1/400;
+    const DAILY_CAP = 100;
+
+    // ===== Utilities =====
+    const fmtTime = (d) => new Date(d).toLocaleString();
+    function calcStreakDays(acts){
+      const days = new Set(acts.map(a => new Date(a.ts).toDateString()));
+      let streak = 0;
+      for(let i=0;i<365;i++){
+        const d = new Date(); d.setDate(d.getDate()-i);
+        if(days.has(d.toDateString())) streak++; else break;
+      }
+      return streak;
+    }
+    function todaysPoints(acts){
+      const today = new Date().toDateString();
+      return acts.filter(a => new Date(a.ts).toDateString() === today)
+                 .reduce((s,a)=> s + (a.pts||0), 0);
+    }
+
+    // ===== Map init =====
+    const center = [13.9113,100.5486]; // เมืองทอง
+    const map = L.map('map').setView(center, 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OSM'}).addTo(map);
+
+    function addPolyline(coords, color, name, km, type){
+      const layer = L.polyline(coords,{weight:5,opacity:0.9,color}).addTo(map);
+      layer.bindPopup(`<b>${name}</b><br>${km} • ${type}`);
+      return layer;
+    }
+
+    const ROUTES = {
+      lake2_8: { name: 'Lake Loop', km: 2.8, type:'Walk', color:'#2563eb', coords:[
+        [13.9138,100.5494],[13.9132,100.5507],[13.9122,100.5520],[13.9108,100.5525],
+        [13.9097,100.5517],[13.9092,100.5502],[13.9096,100.5488],[13.9108,100.5478],
+        [13.9123,100.5476],[13.9135,100.5483],[13.9138,100.5494]
+      ]},
+      run5_2: { name: 'Extended Park Run', km:5.2, type:'Run', color:'#16a34a', coords:[
+        [13.9145,100.5518],[13.9129,100.5532],[13.9109,100.5532],[13.9095,100.5519],
+        [13.9087,100.5496],[13.9092,100.5474],[13.9112,100.5464],[13.9131,100.5471],
+        [13.9146,100.5486],[13.9145,100.5518]
+      ]},
+      cycle8_5: { name: 'City Cycle Loop', km:8.5, type:'Cycle', color:'#d97706', coords:[
+        [13.9160,100.5525],[13.9145,100.5550],[13.9115,100.5556],[13.9085,100.5540],
+        [13.9068,100.5512],[13.9075,100.5480],[13.9095,100.5455],[13.9120,100.5448],
+        [13.9148,100.5458],[13.9162,100.5488],[13.9160,100.5525]
+      ]}
+    };
+    Object.values(ROUTES).forEach(r => addPolyline(r.coords, r.color, r.name, `${r.km} km`, r.type));
+
+    const POIS = [
+      {pos:[13.9127,100.5499], label:'Water Refill Station'},
+      {pos:[13.9102,100.5512], label:'Clinic / First Aid'},
+      {pos:[13.9088,100.5468], label:'Healthy Bowl @ BeeHive'},
+      {pos:[13.9138,100.5460], label:'Fresh&Fill Water'},
+      {pos:[13.9148,100.5524], label:'Fitness MT'}
+    ];
+    POIS.forEach(p => L.marker(p.pos).addTo(map).bindPopup(p.label));
+
+    const legend = L.control({position:'bottomleft'});
+    legend.onAdd = ()=>{
+      const div = L.DomUtil.create('div','legend');
+      div.innerHTML = `
+        <div><span style="display:inline-block;width:12px;height:3px;background:#2563eb;margin-right:6px;"></span>Walk</div>
+        <div><span style="display:inline-block;width:12px;height:3px;background:#16a34a;margin-right:6px;"></span>Run</div>
+        <div><span style="display:inline-block;width:12px;height:3px;background:#d97706;margin-right:6px;"></span>Cycle</div>`;
+      return div;
+    };
+    legend.addTo(map);
+
+    // ===== UI refs =====
+    const activityType = document.getElementById('activityType');
+    const routePreset = document.getElementById('routePreset');
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+    const liveStatus = document.getElementById('liveStatus');
+    const manualKm = document.getElementById('manualKm');
+    const btnManualSave = document.getElementById('btnManualSave');
+    const pointsEl = document.getElementById('points');
+    const historyTable = document.getElementById('historyTable');
+    const redeemTable = document.getElementById('redeemTable');
+    const redeemMsg = document.getElementById('redeemMsg');
+    const challengeState = document.getElementById('challengeState');
+    const streakPill = document.getElementById('streakPill');
+
+    // ===== Render =====
+    function renderPoints(){ pointsEl.textContent = `${Math.floor(state.points)} pts`; }
+    function renderHistory(){
+      historyTable.innerHTML = '';
+      [...state.activities].reverse().forEach(a=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${fmtTime(a.ts)}</td><td>${a.type}</td><td>${a.km.toFixed(2)}</td><td>${a.pts}</td>`;
+        historyTable.appendChild(tr);
+      });
+      const streak = calcStreakDays(state.activities);
+      streakPill.textContent = `streak ${streak} วัน`;
+    }
+    function renderRedemptions(){
+      redeemTable.innerHTML = '';
+      [...state.redemptions].reverse().forEach(r=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${fmtTime(r.ts)}</td><td>${r.title}</td><td>${r.code}</td>`;
+        redeemTable.appendChild(tr);
+      });
+    }
+
+    // ===== Activity tracking =====
+    let watchId = null;
+    let lastCoord = null;
+
+    function distanceMeters(a,b){
+      const toRad = d=> d*Math.PI/180;
+      const R = 6371000;
+      const dLat = toRad(b.lat - a.lat);
+      const dLng = toRad(b.lng - a.lng);
+      const lat1 = toRad(a.lat);
+      const lat2 = toRad(b.lat);
+      const x = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+      return 2*R*Math.asin(Math.sqrt(x));
+    }
+
+    function startActivity(){
+      if(state.active) return;
+      state.active = { type: activityType.value, start: Date.now(), coords: [], routePreset: routePreset.value || null };
+      liveStatus.textContent = 'กำลังบันทึก… ถ้าเบราว์เซอร์ไม่ถามสิทธิ์ ให้เปิด GPS/ยอมรับตำแหน่ง หรือใช้ preset/ใส่ระยะเอง';
+      btnStart.disabled = true; btnStop.disabled = false;
+
+      if (navigator.geolocation && (location.protocol.startsWith('http'))){
+        watchId = navigator.geolocation.watchPosition(pos=>{
+          const c = { lat: pos.coords.latitude, lng: pos.coords.longitude, t: Date.now() };
+          state.active.coords.push(c);
+          if(lastCoord){
+            const d = distanceMeters(lastCoord, c);
+            if (d>5 && d<2000){
+              L.polyline([[lastCoord.lat,lastCoord.lng],[c.lat,c.lng]], {color:'#22c55e',weight:3,opacity:0.5}).addTo(map);
+            }
+          }
+          lastCoord = c;
+        }, err=>{
+          console.warn('GPS error', err);
+          liveStatus.textContent = 'GPS ใช้ไม่ได้ — ใส่ระยะเองได้ด้านล่าง';
+        }, { enableHighAccuracy:true, maximumAge:3000, timeout:10000 });
+      } else {
+        liveStatus.textContent = 'โหมดทดสอบ (file://) — ใส่ระยะเองได้ด้านล่าง';
+      }
+    }
+
+    function presetKm(){
+      const key = routePreset.value;
+      if(!key) return null;
+      const r = ROUTES[key];
+      return r ? r.km : null;
+    }
+
+    function stopActivity(){
+      if(!state.active) return;
+      if (watchId){ navigator.geolocation.clearWatch(watchId); watchId = null; }
+      btnStart.disabled = false; btnStop.disabled = true;
+
+      // compute km
+      let total = 0;
+      for(let i=1;i<state.active.coords.length;i++){
+        total += distanceMeters(state.active.coords[i-1], state.active.coords[i]);
+      }
+      let km = total/1000;
+
+      // fallback
+      if ((!km || km < 0.1) && !presetKm()){
+        const ans = prompt('ไม่ได้รับข้อมูล GPS — ใส่ระยะทาง (กม.) ที่คุณทำได้:', '1.0');
+        const v = parseFloat(ans || '0');
+        if (!isNaN(v) && v > 0) { km = v; }
+      }
+      if (!km || km < 0.1){ km = presetKm() || 1.0; }
+
+      const duration_s = Math.round((Date.now()-state.active.start)/1000);
+
+      // points (cap + streak bonus)
+      const basePts = km*1000*POINT_PER_M;
+      const todayPts = todaysPoints(state.activities);
+      const remain = Math.max(0, DAILY_CAP - todayPts);
+      let pts = Math.floor(Math.max(0, Math.min(basePts, remain)));
+
+      const streakDays = calcStreakDays(state.activities.concat([{ts: Date.now()}]));
+      let bonus = 1.0;
+      if (streakDays >= 7) bonus = 1.5;
+      else if (streakDays >= 3) bonus = 1.2;
+      pts = Math.floor(pts * bonus);
+
+      const rec = { ts: Date.now(), type: state.active.type, km, duration_s, pts, streakDays };
+      state.activities.push(rec);
+      state.points += pts;
+      DB.save('mtfm_activities', state.activities);
+      DB.save('mtfm_points', state.points);
+
+      liveStatus.textContent = `บันทึกแล้ว: ${km.toFixed(2)} กม., +${pts} แต้ม (streak ${streakDays} วัน)`;
+      state.active = null; lastCoord = null;
+      renderPoints(); renderHistory();
+    }
+
+    function manualSave(){
+      const v = parseFloat(manualKm.value || '0');
+      if (v <= 0){ liveStatus.textContent = 'ระยะต้องมากกว่า 0'; return; }
+      const km = v;
+      const basePts = km*1000*POINT_PER_M;
+      const todayPts = todaysPoints(state.activities);
+      const remain = Math.max(0, DAILY_CAP - todayPts);
+      let pts = Math.floor(Math.max(0, Math.min(basePts, remain)));
+      const streakDays = calcStreakDays(state.activities.concat([{ts: Date.now()}]));
+      let bonus = 1.0;
+      if (streakDays >= 7) bonus = 1.5;
+      else if (streakDays >= 3) bonus = 1.2;
+      pts = Math.floor(pts * bonus);
+      const rec = { ts: Date.now(), type: activityType.value, km, duration_s: 0, pts, streakDays };
+      state.activities.push(rec);
+      state.points += pts;
+      DB.save('mtfm_activities', state.activities);
+      DB.save('mtfm_points', state.points);
+      manualKm.value='';
+      liveStatus.textContent = `เพิ่มมือ: ${km.toFixed(2)} กม., +${pts} แต้ม`;
+      renderPoints(); renderHistory();
+    }
+
+    // ===== Rewards =====
+    function redeemReward(title, codePrefix, cost){
+      if (state.points < cost){ redeemMsg.textContent = 'คะแนนไม่พอ'; return; }
+      state.points -= cost;
+      const code = codePrefix + '-' + Math.random().toString(36).slice(2,8).toUpperCase();
+      const rec = { ts: Date.now(), title, code };
+      state.redemptions.push(rec);
+      DB.save('mtfm_points', state.points);
+      DB.save('mtfm_redemptions', state.redemptions);
+      redeemMsg.textContent = `แลกแล้ว: ${title} • โค้ด ${code}`;
+      renderPoints(); renderRedemptions();
+    }
+
+    // ===== Challenge =====
+    function joinChallenge(){
+      if (state.challenge){ challengeState.textContent = `เข้าร่วม: ${state.challenge.name}`; return; }
+      state.challenge = { name: '5k-a-day', joined_at: Date.now() };
+      DB.save('mtfm_challenge', state.challenge);
+      challengeState.textContent = 'เข้าร่วม: 5k-a-day';
+    }
+
+    // ===== Wire up =====
+    document.getElementById('btnStart').addEventListener('click', startActivity);
+    document.getElementById('btnStop').addEventListener('click', stopActivity);
+    document.getElementById('btnManualSave').addEventListener('click', manualSave);
+    document.getElementById('btnQuick1').addEventListener('click', ()=>{
+      const cur = parseFloat(manualKm.value || '0');
+      manualKm.value = (isNaN(cur)?0:cur) + 1;
+    });
+
+    // Initial render
+    renderProfile();
+    renderPoints(); renderHistory(); renderRedemptions();
+    if (state.challenge) challengeState.textContent = `เข้าร่วม: ${state.challenge.name}`;
+    initOnboarding();
+
+    // PWA register (เมื่อรันบน https หรือ localhost)
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
+      navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+    }
+  </script>
+</body>
+</html>
